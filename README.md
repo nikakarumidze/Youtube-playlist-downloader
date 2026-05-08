@@ -39,8 +39,46 @@ ffmpeg must be installed separately and available in PATH.
 
 | File | Purpose |
 |---|---|
-| `converter.py` | Main downloader + organizer |
-| `spotify_organizer.py` | Standalone organizer for existing folders |
+| `run.py` | Main entry point — orchestrates download and/or organize steps |
+| `converter.py` | Downloader + organizer (called by run.py) |
+| `organizer.py` | Standalone organizer for existing folders (called by run.py) |
+
+---
+
+## run.py
+
+The main entry point. Controls which steps run and passes config between them.
+
+### Config
+
+```python
+DOWNLOAD      = True   # Run the download step (converter.py)
+TRANSFORM     = True   # Run the organize step (organizer.py)
+PLAYLIST_LINK = "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID"
+
+FOLDER_NAME   = "/my-folder"  # Used by TRANSFORM if DOWNLOAD is False
+```
+
+### Usage
+
+```bash
+py run.py
+```
+
+### How folder naming works
+
+- If `DOWNLOAD = True`, the output folder name is auto-detected from the most recently created folder inside `downloads/` after the download completes, and passed into the transform step automatically.
+- If `DOWNLOAD = False`, `FOLDER_NAME` is used instead.
+- If the detected folder name is blank for any reason, it falls back to `FOLDER_NAME`.
+
+### Pipeline
+
+```
+run.py
+├── (if DOWNLOAD) → converter.py  →  downloads/Playlist Name/
+│                                      detects newest folder → "Playlist Name"
+└── (if TRANSFORM) → organizer.py "Playlist Name"  →  organized/Playlist Name/
+```
 
 ---
 
@@ -58,15 +96,19 @@ AUDIO_ONLY   = True   # True = .opus audio, False = .mkv video
 
 ### Usage
 
+Can be run standalone:
 ```bash
-py converter.py
+py converter.py "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID"
 ```
+
+Or called via `run.py` (recommended).
 
 ### Pipeline
 
 1. **Download** — yt-dlp fetches all available videos, skips unavailable/private/copyright-claimed ones (exit code 1 is treated as non-fatal)
 2. **Organize** — reads `.info.json` metadata, detects genre from YouTube tags, detects BPM via librosa, renames to `Artist - Title`, moves into subfolders
 3. **Cleanup** — deletes all `.info.json`, `.temp`, `.part` leftovers
+4. **Returns** the name of the newly created playlist folder (newest folder by creation time)
 
 ### Output Structure
 
@@ -88,42 +130,46 @@ downloads/
 
 ---
 
-## spotify_organizer.py
+## organizer.py
 
 Organizes an existing folder of audio files. Uses **Last.fm** for genre detection and **librosa** for BPM.
 
 ### Config
 
 ```python
-LASTFM_API_KEY = "your_lastfm_api_key"
+LASTFM_API_KEY = "your_lastfm_api_key"  # from .env
 ```
 
 Get a free key at [last.fm/api/account/create](https://www.last.fm/api/account/create) — no approval needed, instant.
 
 ### Usage
 
+Can be run standalone:
 ```bash
-py spotify_organizer.py "path/to/input_folder" "path/to/output_folder"
+py organizer.py "/folder-name"
 ```
 
-Original files are **copied**, not moved. Output folder is created automatically.
+This reads from `./downloads/folder-name` and writes to `./organized/folder-name`. Original files are **copied**, not moved.
+
+Or called via `run.py` (recommended) — folder name is passed in automatically after a download.
 
 ### Output Structure
 
 ```
-output_folder/
-├── house/
-│   ├── 120-135bpm/
-│   │   └── Artist - Title.opus
-│   └── 135-150bpm/
-│       └── Artist - Title.opus
-├── hip-hop/
-│   └── Artist - Title.opus
-├── soul/
-│   └── Artist - Title.opus
-└── uncategorized/
-    └── unknown-bpm/
-        └── Artist - Title.opus
+organized/
+└── Playlist Name/
+    ├── house/
+    │   ├── 120-135bpm/
+    │   │   └── Artist - Title.opus
+    │   └── 135-150bpm/
+    │       └── Artist - Title.opus
+    ├── hip-hop/
+    │   └── Artist - Title.opus
+    ├── soul/
+    │   └── Artist - Title.opus
+    └── uncategorized/
+        └── unknown-bpm/
+            └── Artist - Title.opus
 ```
 
 ---

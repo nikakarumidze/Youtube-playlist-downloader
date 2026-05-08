@@ -18,6 +18,12 @@ dotenv_path =find_dotenv()
 load_dotenv(dotenv_path)
 
 # ── Config ────────────────────────────────────────────────────────────────────
+FOLDER_NAME = f"/{sys.argv[1]}" if len(sys.argv) > 1 else ""  # ← change this
+
+INPUT_FOLDER  = f"./downloads{FOLDER_NAME}"
+OUTPUT_FOLDER = f"./organized{FOLDER_NAME}" 
+
+# ── Config ────────────────────────────────────────────────────────────────────
 LASTFM_API_KEY = os.getenv('API_KEY')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
 AUDIO_EXTENSIONS      = {".opus", ".mp3", ".m4a", ".flac", ".wav", ".mkv", ".mp4"}
@@ -294,8 +300,4 @@ def organize_folder(input_folder: str, output_folder: str):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: py organize.py <input_folder> <output_folder>")
-        sys.exit(1)
-
-    organize_folder(sys.argv[1], sys.argv[2])
+    organize_folder(INPUT_FOLDER, OUTPUT_FOLDER)

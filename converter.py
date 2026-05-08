@@ -5,32 +5,14 @@ import re
 import shutil
 import json
 import csv
-import librosa
 from pathlib import Path
 from datetime import datetime
 
 # ── Config ────────────────────────────────────────────────────────────────────
-PLAYLIST_URL = "https://www.youtube.com/playlist?YOUR_URL"
+PLAYLIST_URL = sys.argv[1] if len(sys.argv) > 1 else "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID"
 OUTPUT_DIR   = "./downloads"
 AUDIO_ONLY   = True   # True = audio only (.opus), False = full video (.mkv)
 # ─────────────────────────────────────────────────────────────────────────────
-
-BPM_GENRES = {"house", "disco", "dance", "electronic","tech house","disco house", "techno", "uncategorized"}
-
-GENRE_MAP = {
-    "house":      ["house", "deep house", "tech house", "disco house", "afro house"],
-    "disco":      ["disco", "nu-disco", "italo disco", "boogie"],
-    "soul":       ["soul", "neo soul", "r&b", "rnb"],
-    "jazz":       ["jazz", "jazz funk", "acid jazz", "nu jazz"],
-    "funk":       ["funk", "funk soul", "p-funk"],
-    "electronic": ["electronic", "electronica", "synth", "ambient", "downtempo"],
-    "dance":      ["dance", "edm", "club"],
-    "pop":        ["pop", "indie pop", "dream pop"],
-    "hip-hop":    ["hip hop", "hip-hop", "rap", "lo-fi", "lofi"],
-    "classical":  ["classical", "orchestral", "piano"],
-    "rock":       ["rock", "indie rock", "alternative"],
-    "reggae":     ["reggae", "dub", "dancehall"],
-}
 
 
 def check_dependencies():
@@ -40,23 +22,6 @@ def check_dependencies():
         print("  yt-dlp:  pip install yt-dlp")
         print("  ffmpeg:  https://www.gyan.dev/ffmpeg/builds/")
         sys.exit(1)
-
-def detect_bpm(filepath: Path) -> float | None:
-    try:
-        y, sr = librosa.load(str(filepath), sr=None, mono=True, duration=60)
-        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-        bpm = float(tempo[0]) if hasattr(tempo, '__len__') else float(tempo)
-        return round(bpm, 1)
-    except Exception as e:
-        print(f"    [warn] BPM detection failed: {e}")
-        return None
-
-
-def bpm_subfolder(bpm: float) -> str:
-    # Groups into 15 BPM buckets: 90-105, 105-120, 120-135, 135-150 ...
-    low  = int(bpm // 15) * 15
-    high = low + 15
-    return f"{low}-{high}bpm"
 
 
 def build_cmd():
@@ -91,14 +56,6 @@ def build_cmd():
     return base
 
 
-def detect_subgenre(tags: list[str]) -> str:
-    tags_lower = [t.lower() for t in tags]
-    for genre, keywords in GENRE_MAP.items():
-        for keyword in keywords:
-            if any(keyword in tag for tag in tags_lower):
-                return genre
-    return tags[0].lower() if tags else "uncategorized"
-
 
 def download_playlist():
     print(f"\n── Step 1: Downloading ──")
@@ -116,8 +73,14 @@ def download_playlist():
 
     print("\n── Download complete ──")
 
-def organize_by_subgenre():
-    print(f"\n── Step 2: Organizing into subgenres ──")
+def get_playlist_title() -> str:
+    folders = [f for f in Path(OUTPUT_DIR).iterdir() if f.is_dir()]
+    if folders:
+        return max(folders, key=lambda f: f.stat().st_ctime).name
+    return ""
+
+def organize():
+    print(f"\n── Step 2: Organizing ──")
     extensions = ["opus", "mkv", "mp4", "webm", "m4a"]
     records    = []
 
@@ -169,14 +132,8 @@ def organize_by_subgenre():
         new_name  = f"{sanitize(artist)} - {sanitize(title)}{media_file.suffix}"
 
         tags     = info.get("tags") or []
-        subgenre = detect_subgenre(tags)
-
-        bpm = detect_bpm(media_file)
-        if bpm:
-            print(f"  [bpm] {bpm} → {bpm_subfolder(bpm)}")
-            dest_dir = media_file.parent / subgenre / bpm_subfolder(bpm)
-        else:
-            dest_dir = media_file.parent / subgenre / "unknown-bpm"
+        
+        dest_dir = media_file.parent 
 
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = dest_dir / new_name
@@ -184,16 +141,13 @@ def organize_by_subgenre():
         if dest_file.exists():
             print(f"  [skip] Already organized: {new_name}")
         else:
-            shutil.move(str(media_file), str(dest_file))
-            print(f"  [{subgenre:>15}]  {new_name}")
+            shutil.move(str(media_file), str(dest_file))\
 
         records.append({
             "filename":      dest_file.name,
             "title":         title,
             "artist":        artist,
             "channel":       info.get("channel", info.get("uploader", "")),
-            "subgenre":      subgenre,
-            "bpm":           bpm or "",
             "duration_sec":  info.get("duration", ""),
             "upload_date":   info.get("upload_date", ""),
             "url":           info.get("webpage_url", ""),
@@ -233,5 +187,6 @@ def cleanup():
 if __name__ == "__main__":
     check_dependencies()
     download_playlist()
-    organize_by_subgenre()
+    title = get_playlist_title()
+    organize()
     cleanup()
